@@ -124,7 +124,7 @@ with col1:
     fig_gauge = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = risk_probability * 100,
-        domain = {'x':[0,1], 'y': [0, 1]},
+        domain = {'x':[], 'y': [0, 1]},
         title = {'text': "Churn Probability (%)", 'font': {'size': 18}},
         gauge = {
             'axis': {'range':, 'tickwidth': 1, 'tickcolor': "darkblue"},
