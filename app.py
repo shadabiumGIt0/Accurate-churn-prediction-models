@@ -129,7 +129,7 @@ with col1:
     # Probability Radial Layout Chart
     fig_gauge = go.Figure(go.Indicator(
         mode = "gauge+number",
-        value = risk_probability * 100,
+        value = risk_probability[0][1] * 100,
         domain = {'x':, 'y': [0, 1]},
         title = {'text': "Churn Probability (%)", 'font': {'size': 18}},
         gauge = {
