@@ -27,7 +27,7 @@ st.markdown("<div class='sub-header'>Operational Risk Engine & What-If Churn Pro
 # ----------------------------------------------------
 @st.cache_data
 def get_raw_training_context():
-    # Hardcoded context matching precisely the uploaded bank asset sample architecture
+    # Context matching precisely the uploaded bank asset sample architecture
     raw_data = """Year,CreditScore,Geography,Gender,Age,Tenure,Balance,NumOfProducts,HasCrCard,IsActiveMember,EstimatedSalary,Exited
 2025,619,France,Female,42,2,0,1,1,1,101348.88,1
 2025,608,Spain,Female,41,1,83807.86,1,0,1,112542.58,0
@@ -49,23 +49,21 @@ def get_raw_training_context():
 2025,637,Germany,Female,39,9,137843.8,1,1,1,117622.8,1
 2025,721,Germany,Male,28,9,154475.54,2,0,1,101300.94,1
 2025,584,Germany,Female,30,8,112013.81,1,1,0,177772.03,1"""
-    
     import io
     return pd.read_csv(io.StringIO(raw_data))
 
 df_base = get_raw_training_context()
 
-# Implement exactly the same feature transformation lifecycle in real-time
 def execute_pipeline(raw_input_df, context_df):
     combined = pd.concat([context_df.drop(columns=['Exited']), raw_input_df], ignore_index=True)
     
-    # Transform pipelines
+    # Feature transformations
     combined['Balance_to_Salary_Ratio'] = combined['Balance'] / (combined['EstimatedSalary'] + 1e-5)
     combined['Product_Density'] = combined['NumOfProducts'] / (combined['Tenure'] + 1)
     combined['Engagement_Score'] = combined['HasCrCard'].astype(int) + (combined['IsActiveMember'].astype(int) * 2)
     combined['Age_Tenure_Interaction'] = combined['Age'] * (combined['Tenure'] + 1)
     
-    encoded = pd.get_dummies(combined, columns=['Geography', 'Gender'], drop_first=True)
+    encoded = pd.get_dummies(combined, columns=['Geography', 'Gender'], drop_first=False)
     
     numeric_cols = ['CreditScore', 'Age', 'Tenure', 'Balance', 'NumOfProducts', 
                     'EstimatedSalary', 'Balance_to_Salary_Ratio', 'Product_Density', 
@@ -79,8 +77,7 @@ def execute_pipeline(raw_input_df, context_df):
     
     return X_train, X_target
 
-# Train Core Engine State
-X_train_ctx, _ = execute_pipeline(df_base.drop(columns=['Exited']).iloc[[0]], df_base)
+X_train_ctx, _ = execute_pipeline(df_base.drop(columns=['Exited']).iloc[0:0], df_base)
 y_train_ctx = df_base['Exited']
 
 engine = RandomForestClassifier(n_estimators=150, max_depth=10, random_state=42, class_weight='balanced')
@@ -104,7 +101,6 @@ st.sidebar.subheader("Engagement Modifiers")
 input_crcard = st.sidebar.checkbox("Possesses Active Credit Card Product", value=True)
 input_active = st.sidebar.checkbox("Marked as Domestically Active Member", value=True)
 
-# Pack vector for inference pipeline parsing
 raw_vector = pd.DataFrame([{
     'CreditScore': input_score, 'Age': input_age, 'Tenure': input_tenure,
     'Balance': input_balance, 'NumOfProducts': input_products, 'HasCrCard': int(input_crcard),
@@ -114,22 +110,20 @@ raw_vector = pd.DataFrame([{
 
 _, X_eval = execute_pipeline(raw_vector, df_base)
 
-# Calculate Risk Threshold Predictions
-risk_probability = engine.predict_proba(X_eval)[0][1]
+risk_probability = float(engine.predict_proba(X_eval)[0][1])
 risk_flag = "HIGH RISK ALERT" if risk_probability > 0.45 else "STABLE (LOW RISK)"
 
 # ----------------------------------------------------
 # 3. INTERACTIVE RISK GAUGES & SCORECARDS
 # ----------------------------------------------------
-col1, col2 = st.columns([1, 2])
+col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Inference Result")
     
-    # Probability Radial Layout Chart
     fig_gauge = go.Figure(go.Indicator(
         mode = "gauge+number",
-        value = risk_probability[0][1] * 100,
+        value = risk_probability * 100,
         domain = {'x':, 'y': [0, 1]},
         title = {'text': "Churn Probability (%)", 'font': {'size': 18}},
         gauge = {
@@ -148,14 +142,13 @@ with col1:
     fig_gauge.update_layout(height=260, margin=dict(l=20, r=20, t=40, b=20))
     st.plotly_chart(fig_gauge, use_container_width=True)
     
-    # Conditional Notification Banner
     if risk_probability > 0.45:
         st.error(f"Status Flags: {risk_flag}")
     else:
         st.success(f"Status Flags: {risk_flag}")
 
 with col2:
-    st.subheader("Account Summary Vectors & Indicators")
+    st.subheader("Account Summary Vectors")
     
     m_c1, m_c2 = st.columns(2)
     with m_c1:
@@ -169,7 +162,7 @@ with col2:
         st.markdown(f"""
             <div class='metric-box'>
                 <small>PRODUCT DENSITY LEVEL</small><br>
-                <b style='font-size: 1.4rem;'>{(input_products/(input_tenure+1)):.2f} Density Value</b>
+                <b style='font-size: 1.4rem;'>{(input_products/(input_tenure+1)):.2f} Index</b>
             </div>
         """, unsafe_view_allowed=True)
         
@@ -184,8 +177,8 @@ with col2:
         st.markdown(f"""
             <div class='metric-box'>
                 <small>RISK MITIGATION STATUS</small><br>
-                <b style='font-size: 1.1rem; color:{"red" if risk_probability > 0.45 else "green"};'>
-                    {"PRIORITY INTERVENTION REQUIRED" if risk_probability > 0.45 else "STANDARD STANDBY ENGAGEMENT"}
+                <b style='font-size: 1.1rem; color:{"#EF4444" if risk_probability > 0.45 else "#10B981"};'>
+                    {"PRIORITY INTERVENTION" if risk_probability > 0.45 else "STANDARD STANDBY"}
                 </b>
             </div>
         """, unsafe_view_allowed=True)
@@ -222,47 +215,25 @@ with tab1:
 with tab2:
     st.markdown("##### Churn Probability Response Curve across Age Variants")
     
-    # 1. Establish linear spaces across age boundaries
     sample_ages = np.linspace(18, 85, 25)
     simulated_risks = []
     
-    # 2. Iterate dynamically over simulated metrics keeping other states static
     for dynamic_age in sample_ages:
         temp_vector = raw_vector.copy()
         temp_vector['Age'] = dynamic_age
-        
-        # Parse vector variant through existing pipeline lifecycle
         _, X_sim = execute_pipeline(temp_vector, df_base)
+        simulated_risks.append(float(engine.predict_proba(X_sim)[0][1] * 100))
         
-        # CORRECTED: Isolate scalar value of positive churn probability array vector
-        prob_scalar = engine.predict_proba(X_sim)[0][1] * 100
-        simulated_risks.append(prob_scalar)
-        
-    # 3. Formulate visualization metrics
-    curve_data = pd.DataFrame({
-        'Target Simulated Age': sample_ages, 
-        'Calculated Risk Vector (%)': simulated_risks
-    })
+    curve_data = pd.DataFrame({'Target Simulated Age': sample_ages, 'Calculated Risk Vector (%)': simulated_risks})
     
-    # 4. Generate Plotly rendering trace
-    fig_curve = px.line(
+        fig_curve = px.line(
         curve_data, 
         x='Target Simulated Age', 
         y='Calculated Risk Vector (%)',
         title='Sensitivity Trace Line: Risk Trajectory as Age Adjusts (Holding Other Attributes Static)',
         markers=True,
-        labels={'Target Simulated Age': 'Simulated Customer Age (Years)', 'Calculated Risk Vector (%)': 'Predicted Churn Risk (%)'},
         template='plotly_white'
     )
-    
-    # 5. Format Line Accents & Layout Geometry
     fig_curve.update_traces(line=dict(color='#EF4444', width=3), marker=dict(size=7, color='#1E3A8A'))
-    fig_curve.update_layout(
-        height=380,
-        yaxis_range=[0, 105],
-        margin=dict(l=20, r=20, t=50, b=20),
-        hovermode="x unified"
-    )
-    
+    fig_curve.update_layout(height=380, yaxis_range=[0, 105], margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified")
     st.plotly_chart(fig_curve, use_container_width=True)
-
